@@ -29,7 +29,7 @@ afterEach(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true })
 })
 
-describe("probeAccount", () => {
+describe("probeAccount — token exchange success", () => {
   test("returns ok and marks success on 200", async () => {
     globalThis.fetch = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch
     const result = await probeAccount(account)
@@ -121,13 +121,17 @@ describe("probeAccount", () => {
     expect(result.httpStatus).toBe(200)
   })
 
-  test("returns error on network failure without changing health", async () => {
-    globalThis.fetch = (async () => { throw new Error("network down") }) as unknown as typeof fetch
-    const result = await probeAccount(account)
-    expect(result.status).toBe("error")
-    expect(result.httpStatus).toBeUndefined()
-    const h = status().get("a")
-    expect(h).toBeUndefined()
+  test("sends Copilot client headers", async () => {
+    let capturedHeaders: Record<string, string> = {}
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      capturedHeaders = init?.headers as Record<string, string>
+      return new Response("{}", { status: 200 })
+    }) as unknown as typeof fetch
+    await probeAccount(account)
+    expect(capturedHeaders["Authorization"]).toBe("token tok-a")
+    expect(capturedHeaders["User-Agent"]).toBe("GitHubCopilotChat/0.26.7")
+    expect(capturedHeaders["Editor-Version"]).toBe("vscode/1.96.0")
+    expect(capturedHeaders["Copilot-Integration-Id"]).toBe("vscode-chat")
   })
 
   test("uses correct URL for github.com", async () => {
@@ -149,15 +153,98 @@ describe("probeAccount", () => {
     await probeAccount(enterprise)
     expect(capturedUrl).toBe("https://api.ghe.corp.com/copilot_internal/v2/token")
   })
+})
 
-  test("sends correct Authorization header", async () => {
-    let capturedHeaders: Record<string, string> = {}
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-      capturedHeaders = init?.headers as Record<string, string>
-      return new Response("{}", { status: 200 })
+describe("probeAccount — fallback to /user API", () => {
+  test("falls back to /user on 404 and returns ok with username", async () => {
+    let callCount = 0
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      callCount++
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      if (url.includes("copilot_internal")) {
+        return new Response("", { status: 404 })
+      }
+      return new Response(JSON.stringify({ login: "testuser" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("ok")
+    expect(result.username).toBe("testuser")
+    expect(callCount).toBe(2)
+  })
+
+  test("falls back to /user on network error", async () => {
+    let callCount = 0
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      callCount++
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      if (url.includes("copilot_internal")) {
+        throw new Error("connection refused")
+      }
+      return new Response(JSON.stringify({ login: "fallbackuser" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("ok")
+    expect(result.username).toBe("fallbackuser")
+    expect(callCount).toBe(2)
+  })
+
+  test("fallback /user uses correct URL for github.com", async () => {
+    const capturedUrls: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      capturedUrls.push(url)
+      if (url.includes("copilot_internal")) return new Response("", { status: 404 })
+      return new Response(JSON.stringify({ login: "user1" }), { status: 200 })
     }) as unknown as typeof fetch
     await probeAccount(account)
-    expect(capturedHeaders["Authorization"]).toBe("Token tok-a")
+    expect(capturedUrls[1]).toBe("https://api.github.com/user")
+  })
+
+  test("fallback /user uses correct URL for enterprise", async () => {
+    const capturedUrls: string[] = []
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      capturedUrls.push(url)
+      if (url.includes("copilot_internal")) return new Response("", { status: 404 })
+      return new Response(JSON.stringify({ login: "user1" }), { status: 200 })
+    }) as unknown as typeof fetch
+    await probeAccount(enterprise)
+    expect(capturedUrls[1]).toBe("https://ghe.corp.com/api/v3/user")
+  })
+
+  test("fallback /user 401 returns error", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      if (url.includes("copilot_internal")) return new Response("", { status: 404 })
+      return new Response("", { status: 401 })
+    }) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("error")
+    expect(result.httpStatus).toBe(401)
+  })
+
+  test("fallback /user 403 marks rate limited", async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      if (url.includes("copilot_internal")) return new Response("", { status: 404 })
+      return new Response("", { status: 403 })
+    }) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("rate_limited")
+    expect(result.httpStatus).toBe(403)
+  })
+
+  test("returns error when both token exchange and /user fail with network error", async () => {
+    globalThis.fetch = (async () => { throw new Error("network down") }) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("error")
+    expect(result.httpStatus).toBeUndefined()
   })
 })
 
@@ -173,8 +260,8 @@ describe("probeAll", () => {
     expect(results.size).toBe(2)
     expect(results.get("a")?.status).toBe("ok")
     expect(results.get("e")?.status).toBe("ok")
-    expect(probed).toContain("Token tok-a")
-    expect(probed).toContain("Token tok-e")
+    expect(probed).toContain("token tok-a")
+    expect(probed).toContain("token tok-e")
   })
 
   test("handles mixed results (one ok, one rate limited)", async () => {

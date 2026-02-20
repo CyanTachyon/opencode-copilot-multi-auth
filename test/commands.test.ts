@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import os from "os"
 import { handleAccounts } from "../src/commands"
-import { add } from "../src/storage"
+import { add, list } from "../src/storage"
 import { markRateLimited, resetHealth } from "../src/rotation"
 
 let tmpDir: string
@@ -152,5 +152,40 @@ describe("handleAccounts", () => {
   test("unknown action: returns usage message", async () => {
     const result = await handleAccounts("foo")
     expect(result).toContain("Usage:")
+  })
+
+  test("list: refreshes stale label when probe returns username via /user fallback", async () => {
+    await add({ id: "a", label: "account-1234567890", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    let callCount = 0
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      callCount++
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      if (url.includes("copilot_internal")) return new Response("", { status: 404 })
+      return new Response(JSON.stringify({ login: "resolveduser" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as unknown as typeof fetch
+    const result = await handleAccounts("list")
+    expect(result).toContain("resolveduser")
+    expect(result).not.toContain("account-1234567890")
+    const accounts = await list()
+    expect(accounts[0].label).toBe("resolveduser")
+  })
+
+  test("status: refreshes stale label when probe returns username", async () => {
+    await add({ id: "a", label: "old-label", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    resetHealth("a")
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.toString()
+      if (url.includes("copilot_internal")) return new Response("", { status: 404 })
+      return new Response(JSON.stringify({ login: "newuser" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as unknown as typeof fetch
+    const result = await handleAccounts("status")
+    expect(result).toContain("newuser")
+    expect(result).not.toContain("old-label")
   })
 })

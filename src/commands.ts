@@ -1,6 +1,7 @@
-import { list, remove, reorder } from "./storage"
+import { list, remove, reorder, add } from "./storage"
 import { status, resetHealth } from "./rotation"
-import { probeAll } from "./probe"
+import { probeAll, type ProbeResult } from "./probe"
+import type { Account } from "./types"
 
 const ACTIONS = ["list", "remove", "reorder", "status"] as const
 type Action = (typeof ACTIONS)[number]
@@ -11,6 +12,16 @@ function parseArgs(args: string): { action: Action | undefined; rest: string[] }
   const tokens = trimmed.split(/\s+/)
   const [action, ...rest] = tokens
   return { action: action as Action | undefined, rest }
+}
+
+async function refreshLabels(accounts: Account[], probeResults: Map<string, ProbeResult>) {
+  for (const a of accounts) {
+    const probe = probeResults.get(a.id)
+    if (probe?.username && probe.username !== a.label) {
+      a.label = probe.username
+      await add({ ...a, label: probe.username })
+    }
+  }
 }
 
 function usageMessage(): string {
@@ -24,6 +35,7 @@ export async function handleAccounts(args: string): Promise<string> {
     const accounts = await list()
     if (accounts.length === 0) return "No GitHub Copilot accounts configured."
     const probeResults = await probeAll(accounts)
+    await refreshLabels(accounts, probeResults)
     const health = status()
     return accounts
       .map((a) => {
@@ -70,6 +82,7 @@ export async function handleAccounts(args: string): Promise<string> {
     const accounts = await list()
     if (accounts.length === 0) return "No accounts configured."
     const probeResults = await probeAll(accounts)
+    await refreshLabels(accounts, probeResults)
     const health = status()
     return accounts
       .map((a) => {

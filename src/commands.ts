@@ -23,17 +23,28 @@ export async function handleAccounts(args: string): Promise<string> {
   if (!action || action === "list") {
     const accounts = await list()
     if (accounts.length === 0) return "No GitHub Copilot accounts configured."
-    await probeAll(accounts)
+    const probeResults = await probeAll(accounts)
     const health = status()
     return accounts
       .map((a) => {
         const h = health.get(a.id)
+        const probe = probeResults.get(a.id)
         const limited =
           h && h.rate_limited_until > Date.now()
             ? ` [RATE LIMITED until ${new Date(h.rate_limited_until).toISOString()}]`
             : ""
+        const probeTag =
+          probe?.status === "quota_exhausted"
+            ? ` [QUOTA EXHAUSTED${probe.quotaResetDate ? ` resets ${new Date(probe.quotaResetDate).toISOString()}` : ""}]`
+            : probe?.status === "rate_limited"
+              ? ""
+              : probe?.status === "error" && probe.httpStatus
+                ? ` [ERROR ${probe.httpStatus}]`
+                : probe?.status === "error"
+                  ? " [UNREACHABLE]"
+                  : ""
         const shortId = a.id.slice(0, 8)
-        return `#${a.priority + 1} ${a.label} (${a.domain}) [${shortId}]${limited}`
+        return `#${a.priority + 1} ${a.label} (${a.domain}) [${shortId}]${limited}${probeTag}`
       })
       .join("\n")
   }
@@ -58,14 +69,25 @@ export async function handleAccounts(args: string): Promise<string> {
   if (action === "status") {
     const accounts = await list()
     if (accounts.length === 0) return "No accounts configured."
-    await probeAll(accounts)
+    const probeResults = await probeAll(accounts)
     const health = status()
     return accounts
       .map((a) => {
         const h = health.get(a.id)
+        const probe = probeResults.get(a.id)
         const score = h?.score ?? 100
         const limited = h && h.rate_limited_until > Date.now()
         const failures = h?.consecutive_failures ?? 0
+        const quotaLine =
+          probe?.status === "quota_exhausted"
+            ? `  Quota: EXHAUSTED${probe.quotaResetDate ? ` (resets ${new Date(probe.quotaResetDate).toISOString()})` : ""}`
+            : probe?.status === "ok"
+              ? "  Quota: available"
+              : probe?.status === "error" && probe.httpStatus
+                ? `  Probe: ERROR ${probe.httpStatus}`
+                : probe?.status === "error"
+                  ? "  Probe: UNREACHABLE"
+                  : ""
         return [
           `${a.label} (${a.domain})`,
           `  Priority: #${a.priority + 1}`,
@@ -74,6 +96,7 @@ export async function handleAccounts(args: string): Promise<string> {
             limited ? `YES until ${new Date(h!.rate_limited_until).toISOString()}` : "no"
           }`,
           `  Consecutive failures: ${failures}`,
+          ...(quotaLine ? [quotaLine] : []),
         ].join("\n")
       })
       .join("\n\n")

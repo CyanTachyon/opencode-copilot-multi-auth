@@ -52,11 +52,73 @@ describe("probeAccount", () => {
     expect(h!.consecutive_failures).toBe(1)
   })
 
-  test("returns ok on 401 (token issue, not rate limit)", async () => {
+  test("returns error on 401 (token invalid)", async () => {
     globalThis.fetch = (async () => new Response("", { status: 401 })) as unknown as typeof fetch
     const result = await probeAccount(account)
-    expect(result.status).toBe("ok")
+    expect(result.status).toBe("error")
     expect(result.httpStatus).toBe(401)
+  })
+
+  test("returns rate_limited on 403 with 'API rate limit exceeded' message", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "API rate limit exceeded for user ID 12345." }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("rate_limited")
+    expect(result.httpStatus).toBe(403)
+    const h = status().get("a")
+    expect(h!.rate_limited_until).toBeGreaterThan(Date.now())
+  })
+
+  test("returns error on 403 without rate limit message (no subscription)", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "Copilot access denied" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("error")
+    expect(result.httpStatus).toBe(403)
+  })
+
+  test("returns quota_exhausted on 200 with depleted limited_user_quotas", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          token: "test-token",
+          expires_at: 9999999999,
+          limited_user_quotas: { chat: 0, completions: 0 },
+          limited_user_reset_date: Math.floor(Date.now() / 1000) + 86400,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    ) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("quota_exhausted")
+    expect(result.httpStatus).toBe(200)
+    expect(result.quotaResetDate).toBeGreaterThan(Date.now())
+    const h = status().get("a")
+    expect(h!.rate_limited_until).toBeGreaterThan(Date.now())
+  })
+
+  test("returns ok on 200 with available limited_user_quotas", async () => {
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          token: "test-token",
+          expires_at: 9999999999,
+          limited_user_quotas: { chat: 50, completions: 100 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    ) as unknown as typeof fetch
+    const result = await probeAccount(account)
+    expect(result.status).toBe("ok")
+    expect(result.httpStatus).toBe(200)
   })
 
   test("returns error on network failure without changing health", async () => {
@@ -75,7 +137,7 @@ describe("probeAccount", () => {
       return new Response("{}", { status: 200 })
     }) as unknown as typeof fetch
     await probeAccount(account)
-    expect(capturedUrl).toBe("https://api.githubcopilot.com/models")
+    expect(capturedUrl).toBe("https://api.github.com/copilot_internal/v2/token")
   })
 
   test("uses correct URL for enterprise domain", async () => {
@@ -85,7 +147,7 @@ describe("probeAccount", () => {
       return new Response("{}", { status: 200 })
     }) as unknown as typeof fetch
     await probeAccount(enterprise)
-    expect(capturedUrl).toBe("https://copilot-api.ghe.corp.com/models")
+    expect(capturedUrl).toBe("https://api.ghe.corp.com/copilot_internal/v2/token")
   })
 
   test("sends correct Authorization header", async () => {
@@ -95,7 +157,7 @@ describe("probeAccount", () => {
       return new Response("{}", { status: 200 })
     }) as unknown as typeof fetch
     await probeAccount(account)
-    expect(capturedHeaders["Authorization"]).toBe("Bearer tok-a")
+    expect(capturedHeaders["Authorization"]).toBe("token tok-a")
   })
 })
 
@@ -111,8 +173,8 @@ describe("probeAll", () => {
     expect(results.size).toBe(2)
     expect(results.get("a")?.status).toBe("ok")
     expect(results.get("e")?.status).toBe("ok")
-    expect(probed).toContain("Bearer tok-a")
-    expect(probed).toContain("Bearer tok-e")
+    expect(probed).toContain("token tok-a")
+    expect(probed).toContain("token tok-e")
   })
 
   test("handles mixed results (one ok, one rate limited)", async () => {

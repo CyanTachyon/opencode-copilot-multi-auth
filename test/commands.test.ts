@@ -95,6 +95,53 @@ describe("handleAccounts", () => {
     expect(result).toContain("Health:")
     expect(result).toContain("Rate limited:")
     expect(result).toContain("Consecutive failures:")
+    expect(result).toContain("Quota: available")
+  })
+
+  test("status: shows quota exhausted when probe detects depleted quotas", async () => {
+    await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    resetHealth("a")
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          token: "test-token",
+          expires_at: 9999999999,
+          limited_user_quotas: { chat: 0, completions: 0 },
+          limited_user_reset_date: Math.floor(Date.now() / 1000) + 86400,
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    ) as unknown as typeof fetch
+    const result = await handleAccounts("status")
+    expect(result).toContain("Quota: EXHAUSTED")
+  })
+
+  test("list: shows quota exhausted tag", async () => {
+    await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          token: "test-token",
+          expires_at: 9999999999,
+          limited_user_quotas: { chat: 0, completions: 0 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+    ) as unknown as typeof fetch
+    const result = await handleAccounts("list")
+    expect(result).toContain("QUOTA EXHAUSTED")
+  })
+
+  test("list: shows error tag on 403", async () => {
+    await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ message: "Copilot access denied" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })
+    ) as unknown as typeof fetch
+    const result = await handleAccounts("list")
+    expect(result).toContain("[ERROR 403]")
   })
 
   test("status: returns 'no accounts' when empty", async () => {

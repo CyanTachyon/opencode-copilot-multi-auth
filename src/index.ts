@@ -51,12 +51,13 @@ export default async function(input: PluginInput): Promise<Hooks> {
     "command.execute.before": async (input) => {
       if (input.command !== "copilot-accounts") return
       const result = await handleAccounts(input.arguments)
-      await sdk.session
-        .prompt({
-          path: { id: input.sessionID },
+      await sdk.tui
+        .showToast({
           body: {
-            noReply: true,
-            parts: [{ type: "text", text: result, ignored: true }],
+            title: "Copilot Accounts",
+            message: result,
+            variant: "info",
+            duration: 10000,
           },
         })
         .catch(() => {})

@@ -1,5 +1,6 @@
 import { list, remove, reorder } from "./storage"
 import { status, resetHealth } from "./rotation"
+import { probeAll } from "./probe"
 
 const ACTIONS = ["list", "remove", "reorder", "status"] as const
 type Action = (typeof ACTIONS)[number]
@@ -22,6 +23,7 @@ export async function handleAccounts(args: string): Promise<string> {
   if (!action || action === "list") {
     const accounts = await list()
     if (accounts.length === 0) return "No GitHub Copilot accounts configured."
+    await probeAll(accounts)
     const health = status()
     return accounts
       .map((a) => {
@@ -54,8 +56,9 @@ export async function handleAccounts(args: string): Promise<string> {
 
   if (action === "status") {
     const accounts = await list()
-    const health = status()
     if (accounts.length === 0) return "No accounts configured."
+    await probeAll(accounts)
+    const health = status()
     return accounts
       .map((a) => {
         const h = health.get(a.id)

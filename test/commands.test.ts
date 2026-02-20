@@ -7,13 +7,17 @@ import { add } from "../src/storage"
 import { markRateLimited, resetHealth } from "../src/rotation"
 
 let tmpDir: string
+let originalFetch: typeof globalThis.fetch
 
 beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "copilot-cmd-"))
   process.env.COPILOT_MULTI_AUTH_DATA_DIR = tmpDir
+  originalFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response("{}", { status: 200 })) as unknown as typeof fetch
 })
 
 afterEach(async () => {
+  globalThis.fetch = originalFetch
   delete process.env.COPILOT_MULTI_AUTH_DATA_DIR
   await fs.rm(tmpDir, { recursive: true, force: true })
 })
@@ -37,9 +41,11 @@ describe("handleAccounts", () => {
     expect(result).toContain("id:b")
   })
 
-  test("list: shows rate limited status", async () => {
+  test("list: shows rate limited status when probe detects 429", async () => {
     await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
-    markRateLimited("a", 60000)
+    globalThis.fetch = (async () =>
+      new Response("", { status: 429, headers: { "Retry-After": "60" } })
+    ) as unknown as typeof fetch
     const result = await handleAccounts("list")
     expect(result).toContain("RATE LIMITED")
   })

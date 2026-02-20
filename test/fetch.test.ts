@@ -33,7 +33,7 @@ describe("fetch wrapper", () => {
     globalThis.fetch = (async (_req: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>
       return new Response("{}", { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       const copilotFetch = createFetch("0.1.0")
@@ -59,7 +59,7 @@ describe("fetch wrapper", () => {
         return new Response("", { status: 429, headers: { "Retry-After": "60" } })
       }
       return new Response("{}", { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       const copilotFetch = createFetch("0.1.0")
@@ -78,7 +78,7 @@ describe("fetch wrapper", () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = (async () => {
       return new Response("", { status: 429, headers: { "Retry-After": "60" } })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       const copilotFetch = createFetch("0.1.0")
@@ -100,7 +100,7 @@ describe("fetch wrapper", () => {
     globalThis.fetch = (async (_req: RequestInfo | URL, init?: RequestInit) => {
       capturedHeaders = init?.headers as Record<string, string>
       return new Response("{}", { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     try {
       const copilotFetch = createFetch("0.1.0")

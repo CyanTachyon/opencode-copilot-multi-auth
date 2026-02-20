@@ -1,0 +1,32 @@
+{
+  "name": "opencode-copilot-multi-auth",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "OpenCode plugin for multiple GitHub Copilot accounts with automatic failover",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun build src/index.ts --outdir dist --target node --format esm && bun x tsc --emitDeclarationOnly",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "keywords": [
+    "opencode",
+    "copilot",
+    "github",
+    "multi-account",
+    "auth",
+    "plugin"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.2.10"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.0"
+  }
+}

@@ -26,14 +26,13 @@ Add the plugin to your `opencode.json` configuration file:
 ## Usage
 After you install the plugin, start OpenCode and use the `/login` command to add your accounts. You can run `/login` multiple times. Each successful login adds a new account to your pool. OpenCode uses accounts in the order they were added. The first account has the highest priority. When an account receives a 429 rate limit error, the plugin automatically switches to the next available account.
 
-## Account Management Tool
-The `copilot_accounts` tool provides direct control over your account pool. It supports several actions:
-- `list`: Shows all configured accounts and their current priority.
-- `remove`: Deletes a specific account from the pool.
-- `reorder`: Changes the priority of your accounts.
-- `status`: Displays the health and rate limit status of each account.
+## Account Management Commands
+The plugin auto-registers the `/copilot-accounts` command for direct account management.
 
-Example usage: "Use the copilot_accounts tool to list all accounts"
+- `/copilot-accounts` or `/copilot-accounts list` — Shows all configured accounts, their priority, and rate limit status.
+- `/copilot-accounts remove <id>` — Removes a specific account from the pool.
+- `/copilot-accounts reorder <id1> <id2> ...` — Changes the priority order of your accounts.
+- `/copilot-accounts status` — Displays detailed health and rate limit status for each account.
 
 ## Environment Variables
 The plugin uses a specific directory for storing account tokens and configuration.

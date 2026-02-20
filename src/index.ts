@@ -1,10 +1,9 @@
 import type { Hooks, PluginInput } from "@opencode-ai/plugin"
-import { tool } from "@opencode-ai/plugin/tool"
 import { copilotBaseURL } from "./types"
-import { list, remove, reorder } from "./storage"
+import { list } from "./storage"
 import { createAuthMethod } from "./auth"
 import { createFetch } from "./fetch"
-import { status, resetHealth } from "./rotation"
+import { handleAccounts } from "./commands"
 
 const VERSION = "0.1.0"
 
@@ -40,63 +39,28 @@ export default async function(input: PluginInput): Promise<Hooks> {
       methods: [createAuthMethod(VERSION)],
     },
 
-    tool: {
-      copilot_accounts: tool({
-        description: "Manage GitHub Copilot accounts. Actions: list, remove, reorder, status.",
-        args: {
-          action: tool.schema.enum(["list", "remove", "reorder", "status"]),
-          id: tool.schema.string().optional().describe("Account ID for remove action"),
-          ids: tool.schema.array(tool.schema.string()).optional().describe("Ordered account IDs for reorder action"),
-        },
-        async execute(args) {
-          if (args.action === "list") {
-            const accounts = await list()
-            if (accounts.length === 0) return "No GitHub Copilot accounts configured."
-            const health = status()
-            return accounts.map((a) => {
-              const h = health.get(a.id)
-              const limited = h && h.rate_limited_until > Date.now()
-                ? ` [RATE LIMITED until ${new Date(h.rate_limited_until).toISOString()}]`
-                : ""
-              return `#${a.priority + 1} ${a.label} (${a.domain}) id:${a.id}${limited}`
-            }).join("\n")
-          }
+    config: async (input) => {
+      const config = input as Record<string, any>
+      config.command ??= {}
+      config.command["copilot-accounts"] = {
+        template: "Show the copilot account information above to the user exactly as-is.",
+        description: "Manage GitHub Copilot accounts (list, remove, reorder, status)",
+      }
+    },
 
-          if (args.action === "remove") {
-            if (!args.id) return "Error: id is required for remove action"
-            const store = await remove(args.id)
-            resetHealth(args.id)
-            return `Removed. ${store.accounts.length} account(s) remaining.`
-          }
-
-          if (args.action === "reorder") {
-            if (!args.ids || args.ids.length === 0) return "Error: ids array is required for reorder action"
-            await reorder(args.ids)
-            return "Accounts reordered successfully."
-          }
-
-          if (args.action === "status") {
-            const accounts = await list()
-            const health = status()
-            if (accounts.length === 0) return "No accounts configured."
-            return accounts.map((a) => {
-              const h = health.get(a.id)
-              const score = h?.score ?? 100
-              const limited = h && h.rate_limited_until > Date.now()
-              const failures = h?.consecutive_failures ?? 0
-              return [
-                `${a.label} (${a.domain})`,
-                `  Priority: #${a.priority + 1}`,
-                `  Health: ${score}/100`,
-                `  Rate limited: ${limited ? `YES until ${new Date(h!.rate_limited_until).toISOString()}` : "no"}`,
-                `  Consecutive failures: ${failures}`,
-              ].join("\n")
-            }).join("\n\n")
-          }
-
-          return `Unknown action: ${args.action}`
-        },
-      }),
+    "command.execute.before": async (input) => {
+      if (input.command !== "copilot-accounts") return
+      const result = await handleAccounts(input.arguments)
+      await sdk.session
+        .prompt({
+          path: { id: input.sessionID },
+          body: {
+            noReply: true,
+            parts: [{ type: "text", text: result, ignored: true }],
+          },
+        })
+        .catch(() => {})
+      throw new Error("__ACCOUNTS_COMMAND_HANDLED__")
     },
 
     "chat.headers": async (incoming, output) => {

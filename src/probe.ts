@@ -46,6 +46,7 @@ export type ProbeResult = {
   quotaResetDate?: number
   /** GitHub username resolved from /user API fallback */
   username?: string
+  method: "token_exchange" | "user_api"
 }
 
 async function tryTokenExchange(account: Account, signal: AbortSignal): Promise<ProbeResult | null> {
@@ -68,7 +69,7 @@ async function tryTokenExchange(account: Account, signal: AbortSignal): Promise<
     if (response.status === 429) {
       const retryAfterMs = parseRetryAfter(response)
       markRateLimited(account.id, retryAfterMs)
-      return { id: account.id, status: "rate_limited", httpStatus: 429, retryAfterMs }
+      return { id: account.id, status: "rate_limited", httpStatus: 429, retryAfterMs, method: "token_exchange" }
     }
 
     // 200 → token issued; check if free-tier quota is exhausted
@@ -92,6 +93,7 @@ async function tryTokenExchange(account: Account, signal: AbortSignal): Promise<
               httpStatus: 200,
               retryAfterMs,
               quotaResetDate: resetDate,
+              method: "token_exchange",
             }
           }
         }
@@ -99,7 +101,7 @@ async function tryTokenExchange(account: Account, signal: AbortSignal): Promise<
         // JSON parse failed — still a 200, treat as ok
       }
       markSuccess(account.id)
-      return { id: account.id, status: "ok", httpStatus: 200 }
+      return { id: account.id, status: "ok", httpStatus: 200, method: "token_exchange" }
     }
 
     // 403 → either rate limited or no access
@@ -108,16 +110,16 @@ async function tryTokenExchange(account: Account, signal: AbortSignal): Promise<
         const body = await response.json() as { message?: string }
         if (body.message?.startsWith("API rate limit exceeded")) {
           markRateLimited(account.id)
-          return { id: account.id, status: "rate_limited", httpStatus: 403 }
+          return { id: account.id, status: "rate_limited", httpStatus: 403, method: "token_exchange" }
         }
       } catch {
         // JSON parse failed
       }
-      return { id: account.id, status: "error", httpStatus: 403 }
+      return { id: account.id, status: "error", httpStatus: 403, method: "token_exchange" }
     }
 
     // 401 or other — report error
-    return { id: account.id, status: "error", httpStatus: response.status }
+    return { id: account.id, status: "error", httpStatus: response.status, method: "token_exchange" }
   } catch {
     // Network error → fall back to /user
     return null
@@ -148,22 +150,22 @@ async function tryUserApi(account: Account, signal: AbortSignal): Promise<ProbeR
         // JSON parse failed
       }
       markSuccess(account.id)
-      return { id: account.id, status: "ok", httpStatus: 200, username }
+      return { id: account.id, status: "ok", httpStatus: 200, username, method: "user_api" }
     }
 
     if (response.status === 401) {
-      return { id: account.id, status: "error", httpStatus: 401 }
+      return { id: account.id, status: "error", httpStatus: 401, method: "user_api" }
     }
 
     if (response.status === 403) {
       // GitHub API rate limit (not Copilot rate limit)
       markRateLimited(account.id)
-      return { id: account.id, status: "rate_limited", httpStatus: 403 }
+      return { id: account.id, status: "rate_limited", httpStatus: 403, method: "user_api" }
     }
 
-    return { id: account.id, status: "error", httpStatus: response.status }
+    return { id: account.id, status: "error", httpStatus: response.status, method: "user_api" }
   } catch {
-    return { id: account.id, status: "error" }
+    return { id: account.id, status: "error", method: "user_api" }
   }
 }
 
@@ -191,7 +193,7 @@ export async function probeAll(accounts: Account[]): Promise<Map<string, ProbeRe
     if (r.status === "fulfilled") {
       map.set(accounts[i].id, r.value)
     } else {
-      map.set(accounts[i].id, { id: accounts[i].id, status: "error" })
+      map.set(accounts[i].id, { id: accounts[i].id, status: "error", method: "token_exchange" })
     }
   }
   return map

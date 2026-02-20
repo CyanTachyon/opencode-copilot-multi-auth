@@ -5,7 +5,7 @@ import { createAuthMethod } from "./auth"
 import { createFetch } from "./fetch"
 import { handleAccounts } from "./commands"
 
-const VERSION = "0.2.6"
+const VERSION = "0.2.7"
 
 export default async function(input: PluginInput): Promise<Hooks> {
   const sdk = input.client

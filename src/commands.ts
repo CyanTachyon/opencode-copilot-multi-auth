@@ -25,7 +25,7 @@ async function refreshLabels(accounts: Account[], probeResults: Map<string, Prob
 }
 
 function usageMessage(): string {
-  return "Usage: /copilot-accounts <list|remove|reorder|status>"
+  return "Usage: /copilot-accounts <list|remove|reorder|status>\n  remove <username>  — Remove an account\n  reorder <u1> <u2>  — Set priority order"
 }
 
 export async function handleAccounts(args: string): Promise<string> {
@@ -54,7 +54,9 @@ export async function handleAccounts(args: string): Promise<string> {
                 ? ` [ERROR ${probe.httpStatus}]`
                 : probe?.status === "error"
                   ? " [UNREACHABLE]"
-                  : ""
+                  : probe?.method === "user_api"
+                    ? " [QUOTA UNKNOWN]"
+                    : ""
         const shortId = a.id.slice(0, 8)
         return `#${a.priority + 1} ${a.label} (${a.domain}) [${shortId}]${limited}${probeTag}`
       })
@@ -62,17 +64,27 @@ export async function handleAccounts(args: string): Promise<string> {
   }
 
   if (action === "remove") {
-    const id = rest[0]
-    if (!id) return "Error: account ID is required. Usage: /copilot-accounts remove <id>"
-    const store = await remove(id)
-    resetHealth(id)
-    return `Removed. ${store.accounts.length} account(s) remaining.`
+    const name = rest[0]
+    if (!name) return "Error: username is required. Usage: /copilot-accounts remove <username>"
+    const accounts = await list()
+    const account = accounts.find((a) => a.label === name) ?? accounts.find((a) => a.id.startsWith(name))
+    if (!account) return `Error: no account found matching "${name}".`
+    const store = await remove(account.id)
+    resetHealth(account.id)
+    return `Removed ${account.label}. ${store.accounts.length} account(s) remaining.`
   }
 
   if (action === "reorder") {
-    const ids = rest
-    if (ids.length === 0) {
-      return "Error: account IDs are required. Usage: /copilot-accounts reorder <id1> <id2> ..."
+    const names = rest
+    if (names.length === 0) {
+      return "Error: usernames are required. Usage: /copilot-accounts reorder <username1> <username2> ..."
+    }
+    const accounts = await list()
+    const ids: string[] = []
+    for (const name of names) {
+      const account = accounts.find((a) => a.label === name) ?? accounts.find((a) => a.id.startsWith(name))
+      if (!account) return `Error: no account found matching "${name}".`
+      ids.push(account.id)
     }
     await reorder(ids)
     return "Accounts reordered successfully."
@@ -94,13 +106,15 @@ export async function handleAccounts(args: string): Promise<string> {
         const quotaLine =
           probe?.status === "quota_exhausted"
             ? `  Quota: EXHAUSTED${probe.quotaResetDate ? ` (resets ${new Date(probe.quotaResetDate).toISOString()})` : ""}`
-            : probe?.status === "ok"
+            : probe?.status === "ok" && probe.method === "token_exchange"
               ? "  Quota: available"
-              : probe?.status === "error" && probe.httpStatus
-                ? `  Probe: ERROR ${probe.httpStatus}`
-                : probe?.status === "error"
-                  ? "  Probe: UNREACHABLE"
-                  : ""
+              : probe?.status === "ok" && probe.method === "user_api"
+                ? "  Quota: unknown (token valid, Copilot endpoint unavailable)"
+                : probe?.status === "error" && probe.httpStatus
+                  ? `  Probe: ERROR ${probe.httpStatus}`
+                  : probe?.status === "error"
+                    ? "  Probe: UNREACHABLE"
+                    : ""
         return [
           `${a.label} (${a.domain})`,
           `  Priority: #${a.priority + 1}`,

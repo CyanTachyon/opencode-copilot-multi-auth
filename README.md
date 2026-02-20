@@ -37,8 +37,8 @@ OpenCode uses accounts in priority order. The first account added has the highes
 The plugin registers the `/copilot-accounts` command for direct account management.
 
 - `/copilot-accounts` or `/copilot-accounts list` — Shows all configured accounts with username, priority, and rate limit status.
-- `/copilot-accounts remove <id>` — Removes a specific account from the pool.
-- `/copilot-accounts reorder <id1> <id2> ...` — Changes the priority order of your accounts.
+- `/copilot-accounts remove <username>` — Removes a specific account from the pool.
+- `/copilot-accounts reorder <username1> <username2> ...` — Changes the priority order of your accounts.
 - `/copilot-accounts status` — Displays detailed health and rate limit status for each account.
 
 ## Environment Variables

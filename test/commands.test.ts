@@ -57,34 +57,56 @@ describe("handleAccounts", () => {
     expect(result1).toBe(result2)
   })
 
-  test("remove: removes account by id", async () => {
+  test("remove: removes account by username", async () => {
     await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
     await add({ id: "b", label: "secondary", domain: "github.com", token: "t2", added_at: 2, priority: 1 })
     resetHealth("a")
     resetHealth("b")
-    const result = await handleAccounts("remove a")
-    expect(result).toBe("Removed. 1 account(s) remaining.")
+    const result = await handleAccounts("remove primary")
+    expect(result).toContain("Removed primary")
+    expect(result).toContain("1 account(s) remaining")
   })
 
-  test("remove: returns error when id is missing", async () => {
+  test("remove: falls back to id prefix match", async () => {
+    await add({ id: "abcd-1234", label: "myuser", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    resetHealth("abcd-1234")
+    const result = await handleAccounts("remove abcd-1234")
+    expect(result).toContain("Removed myuser")
+  })
+
+  test("remove: returns error when no match found", async () => {
+    await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    const result = await handleAccounts("remove nonexistent")
+    expect(result).toContain("Error:")
+    expect(result).toContain("no account found")
+  })
+
+  test("remove: returns error when username is missing", async () => {
     const result = await handleAccounts("remove")
     expect(result).toContain("Error:")
-    expect(result).toContain("account ID is required")
+    expect(result).toContain("username is required")
   })
 
-  test("reorder: reorders accounts", async () => {
+  test("reorder: reorders accounts by username", async () => {
     await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
     await add({ id: "b", label: "secondary", domain: "github.com", token: "t2", added_at: 2, priority: 1 })
     resetHealth("a")
     resetHealth("b")
-    const result = await handleAccounts("reorder b a")
+    const result = await handleAccounts("reorder secondary primary")
     expect(result).toContain("reordered successfully")
   })
 
-  test("reorder: returns error when ids are missing", async () => {
+  test("reorder: returns error when username not found", async () => {
+    await add({ id: "a", label: "primary", domain: "github.com", token: "t1", added_at: 1, priority: 0 })
+    const result = await handleAccounts("reorder nonexistent")
+    expect(result).toContain("Error:")
+    expect(result).toContain("no account found")
+  })
+
+  test("reorder: returns error when usernames are missing", async () => {
     const result = await handleAccounts("reorder")
     expect(result).toContain("Error:")
-    expect(result).toContain("account IDs are required")
+    expect(result).toContain("usernames are required")
   })
 
   test("status: returns detailed health for accounts", async () => {

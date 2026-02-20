@@ -157,7 +157,7 @@ describe("probeAccount", () => {
       return new Response("{}", { status: 200 })
     }) as unknown as typeof fetch
     await probeAccount(account)
-    expect(capturedHeaders["Authorization"]).toBe("token tok-a")
+    expect(capturedHeaders["Authorization"]).toBe("Token tok-a")
   })
 })
 
@@ -173,8 +173,8 @@ describe("probeAll", () => {
     expect(results.size).toBe(2)
     expect(results.get("a")?.status).toBe("ok")
     expect(results.get("e")?.status).toBe("ok")
-    expect(probed).toContain("token tok-a")
-    expect(probed).toContain("token tok-e")
+    expect(probed).toContain("Token tok-a")
+    expect(probed).toContain("Token tok-e")
   })
 
   test("handles mixed results (one ok, one rate limited)", async () => {

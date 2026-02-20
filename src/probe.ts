@@ -49,8 +49,8 @@ export async function probeAccount(account: Account): Promise<ProbeResult> {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `token ${account.token}`,
-        "User-Agent": "opencode/probe",
+        Authorization: `Token ${account.token}`,
+        "User-Agent": "OpenCode/1.0",
         Accept: "application/json",
       },
       signal: controller.signal,

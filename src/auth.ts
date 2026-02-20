@@ -112,9 +112,20 @@ export function createAuthMethod(version: string) {
             }
 
             if (data.access_token) {
+              let resolvedLabel = label
+              try {
+                const apiBase = domain === "github.com" ? "https://api.github.com" : `https://${domain}/api/v3`
+                const userRes = await fetch(`${apiBase}/user`, {
+                  headers: { Authorization: `token ${data.access_token}`, "User-Agent": agent },
+                })
+                if (userRes.ok) {
+                  const user = (await userRes.json()) as { login?: string }
+                  if (user.login) resolvedLabel = user.login
+                }
+              } catch {}
               const account: Account = {
                 id: crypto.randomUUID(),
-                label,
+                label: resolvedLabel,
                 domain,
                 token: data.access_token,
                 added_at: Date.now(),

@@ -32,7 +32,8 @@ export async function handleAccounts(args: string): Promise<string> {
           h && h.rate_limited_until > Date.now()
             ? ` [RATE LIMITED until ${new Date(h.rate_limited_until).toISOString()}]`
             : ""
-        return `#${a.priority + 1} ${a.label} (${a.domain}) id:${a.id}${limited}`
+        const shortId = a.id.slice(0, 8)
+        return `#${a.priority + 1} ${a.label} (${a.domain}) [${shortId}]${limited}`
       })
       .join("\n")
   }

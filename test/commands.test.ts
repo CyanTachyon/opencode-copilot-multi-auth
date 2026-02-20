@@ -37,8 +37,8 @@ describe("handleAccounts", () => {
     expect(result).toContain("primary")
     expect(result).toContain("secondary")
     expect(result).toContain("github.com")
-    expect(result).toContain("id:a")
-    expect(result).toContain("id:b")
+    expect(result).toContain("[a]")
+    expect(result).toContain("[b]")
   })
 
   test("list: shows rate limited status when probe detects 429", async () => {

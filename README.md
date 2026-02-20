@@ -6,40 +6,48 @@ Multiple account support and automatic failover for GitHub Copilot in OpenCode.
 - Automatic failover when hitting rate limits (HTTP 429).
 - Support for github.com and GitHub Enterprise.
 - Priority-based account recovery.
-- Built-in management tool for account lifecycle.
+- Proactive health probing — detects rate-limited accounts before use.
+- Auto-resolves GitHub username as account label during login.
 
 ## Install
-```bash
-npm install opencode-copilot-multi-auth
-```
 
-## Configuration
-Add the plugin to your `opencode.json` configuration file:
+Edit `~/.config/opencode/opencode.json` and add the plugin to the `plugin` array:
+
 ```json
 {
-  "plugins": {
-    "opencode-copilot-multi-auth": true
-  }
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "opencode-copilot-multi-auth"
+  ]
 }
 ```
 
+Then restart OpenCode. The plugin will be installed automatically.
+
 ## Usage
-After you install the plugin, start OpenCode and use the `/login` command to add your accounts. You can run `/login` multiple times. Each successful login adds a new account to your pool. OpenCode uses accounts in the order they were added. The first account has the highest priority. When an account receives a 429 rate limit error, the plugin automatically switches to the next available account.
+
+After installing the plugin, start OpenCode and use the `/connect` command to add your GitHub Copilot accounts. You can run `/connect` multiple times — each successful login adds a new account to your pool.
+
+The plugin automatically resolves your GitHub username and uses it as the account label, so you can easily identify accounts.
+
+OpenCode uses accounts in priority order. The first account added has the highest priority. When an account receives a 429 rate limit error, the plugin automatically switches to the next available account.
 
 ## Account Management Commands
-The plugin auto-registers the `/copilot-accounts` command for direct account management.
 
-- `/copilot-accounts` or `/copilot-accounts list` — Shows all configured accounts, their priority, and rate limit status.
+The plugin registers the `/copilot-accounts` command for direct account management.
+
+- `/copilot-accounts` or `/copilot-accounts list` — Shows all configured accounts with username, priority, and rate limit status.
 - `/copilot-accounts remove <id>` — Removes a specific account from the pool.
 - `/copilot-accounts reorder <id1> <id2> ...` — Changes the priority order of your accounts.
 - `/copilot-accounts status` — Displays detailed health and rate limit status for each account.
 
 ## Environment Variables
-The plugin uses a specific directory for storing account tokens and configuration.
-- `COPILOT_MULTI_AUTH_DATA_DIR`: Set this to change the storage location. It defaults to `~/.local/share/opencode/`.
+
+- `COPILOT_MULTI_AUTH_DATA_DIR`: Override the storage location for account tokens. Defaults to `~/.local/share/opencode/`.
 
 ## How It Works
-This plugin overrides the built-in GitHub Copilot authentication provider. It maintains a collection of tokens and tracks the health of each account in memory. If a request fails with a 429 status code, the plugin automatically retries the operation using the next account in your priority list. Health status resets when you restart OpenCode. The primary account information stays synced with the standard OpenCode `auth.json` file for compatibility.
+
+This plugin overrides the built-in GitHub Copilot authentication provider. It maintains a pool of tokens and tracks the health of each account in memory. Before displaying account status, the plugin proactively probes each account to detect rate limits. If a request fails with a 429 status code, the plugin automatically retries using the next available account. Health status resets when you restart OpenCode. The primary account stays synced with the standard OpenCode `auth.json` file for compatibility.
 
 ## License
 MIT

@@ -78,3 +78,7 @@ export function status(): Map<string, AccountHealth> {
 export function resetHealth(id: string) {
   health.delete(id)
 }
+
+export function hasBeenUsed(id: string): boolean {
+  return health.has(id)
+}

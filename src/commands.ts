@@ -1,6 +1,5 @@
-import { list, remove, reorder, add } from "./storage"
-import { status, resetHealth } from "./rotation"
-import { probeAll, type ProbeResult } from "./probe"
+import { list, remove, reorder } from "./storage"
+import { status, resetHealth, hasBeenUsed } from "./rotation"
 import type { Account } from "./types"
 
 const ACTIONS = ["list", "remove", "reorder", "status"] as const
@@ -14,18 +13,10 @@ function parseArgs(args: string): { action: Action | undefined; rest: string[] }
   return { action: action as Action | undefined, rest }
 }
 
-async function refreshLabels(accounts: Account[], probeResults: Map<string, ProbeResult>) {
-  for (const a of accounts) {
-    const probe = probeResults.get(a.id)
-    if (probe?.username && probe.username !== a.label) {
-      a.label = probe.username
-      await add({ ...a, label: probe.username })
-    }
-  }
-}
-
 function usageMessage(): string {
-  return "Usage: /copilot-accounts <list|remove|reorder|status>\n  remove <username>  — Remove an account\n  reorder <u1> <u2>  — Set priority order"
+  return `Usage: /copilot-accounts <list|remove|reorder|status>
+  remove <username>  — Remove an account
+  reorder <u1> <u2>  — Set priority order`
 }
 
 export async function handleAccounts(args: string): Promise<string> {
@@ -34,31 +25,18 @@ export async function handleAccounts(args: string): Promise<string> {
   if (!action || action === "list") {
     const accounts = await list()
     if (accounts.length === 0) return "No GitHub Copilot accounts configured."
-    const probeResults = await probeAll(accounts)
-    await refreshLabels(accounts, probeResults)
     const health = status()
     return accounts
       .map((a) => {
         const h = health.get(a.id)
-        const probe = probeResults.get(a.id)
-        const limited =
-          h && h.rate_limited_until > Date.now()
-            ? ` [RATE LIMITED until ${new Date(h.rate_limited_until).toISOString()}]`
+        const limited = h && h.rate_limited_until > Date.now()
+        const tag = limited
+          ? ` [RATE LIMITED until ${new Date(h!.rate_limited_until).toISOString()}]`
+          : !hasBeenUsed(a.id)
+            ? " [UNKNOWN]"
             : ""
-        const probeTag =
-          probe?.status === "quota_exhausted"
-            ? ` [QUOTA EXHAUSTED${probe.quotaResetDate ? ` resets ${new Date(probe.quotaResetDate).toISOString()}` : ""}]`
-            : probe?.status === "rate_limited"
-              ? ""
-              : probe?.status === "error" && probe.httpStatus
-                ? ` [ERROR ${probe.httpStatus}]`
-                : probe?.status === "error"
-                  ? " [UNREACHABLE]"
-                  : probe?.method === "user_api"
-                    ? " [QUOTA UNKNOWN]"
-                    : ""
         const shortId = a.id.slice(0, 8)
-        return `#${a.priority + 1} ${a.label} (${a.domain}) [${shortId}]${limited}${probeTag}`
+        return `#${a.priority + 1} ${a.label} (${a.domain}) [${shortId}]${tag}`
       })
       .join("\n")
   }
@@ -93,37 +71,26 @@ export async function handleAccounts(args: string): Promise<string> {
   if (action === "status") {
     const accounts = await list()
     if (accounts.length === 0) return "No accounts configured."
-    const probeResults = await probeAll(accounts)
-    await refreshLabels(accounts, probeResults)
     const health = status()
     return accounts
       .map((a) => {
         const h = health.get(a.id)
-        const probe = probeResults.get(a.id)
         const score = h?.score ?? 100
         const limited = h && h.rate_limited_until > Date.now()
         const failures = h?.consecutive_failures ?? 0
-        const quotaLine =
-          probe?.status === "quota_exhausted"
-            ? `  Quota: EXHAUSTED${probe.quotaResetDate ? ` (resets ${new Date(probe.quotaResetDate).toISOString()})` : ""}`
-            : probe?.status === "ok" && probe.method === "token_exchange"
-              ? "  Quota: available"
-              : probe?.status === "ok" && probe.method === "user_api"
-                ? "  Quota: unknown (token valid, Copilot endpoint unavailable)"
-                : probe?.status === "error" && probe.httpStatus
-                  ? `  Probe: ERROR ${probe.httpStatus}`
-                  : probe?.status === "error"
-                    ? "  Probe: UNREACHABLE"
-                    : ""
+        const used = hasBeenUsed(a.id)
+        const quotaLine = !used
+          ? "  Quota: unknown (no requests made yet)"
+          : limited
+            ? `  Quota: rate limited until ${new Date(h!.rate_limited_until).toISOString()}`
+            : "  Quota: available"
         return [
           `${a.label} (${a.domain})`,
           `  Priority: #${a.priority + 1}`,
           `  Health: ${score}/100`,
-          `  Rate limited: ${
-            limited ? `YES until ${new Date(h!.rate_limited_until).toISOString()}` : "no"
-          }`,
+          `  Rate limited: ${limited ? `YES until ${new Date(h!.rate_limited_until).toISOString()}` : "no"}`,
           `  Consecutive failures: ${failures}`,
-          ...(quotaLine ? [quotaLine] : []),
+          quotaLine,
         ].join("\n")
       })
       .join("\n\n")

@@ -129,33 +129,36 @@ describe("handleAccounts", () => {
       expect(result).toBe("No accounts configured.")
     })
 
-    test("shows unknown quota for unused accounts", async () => {
-      await add({ id: "alice", label: "alice", domain: "github.com", token: "t1", added_at: 0, priority: 0 })
-      await add({ id: "bob", label: "bob", domain: "github.com", token: "t2", added_at: 0, priority: 1 })
+    test("status: shows unknown for unused accounts", async () => {
+      await add({ id: "id-alice", label: "alice", domain: "github.com", token: "t1", added_at: 0, priority: 0 })
+      await add({ id: "id-bob", label: "bob", domain: "github.com", token: "t2", added_at: 0, priority: 1 })
       const result = await handleAccounts("status")
-      expect(result).toContain("Quota: unknown (no requests made yet)")
+      expect(result).toContain("Rate limited: unknown")
       expect(result).toContain("alice")
       expect(result).toContain("bob")
+      expect(result).not.toContain("Quota")
     })
 
-    test("shows available quota for used healthy account", async () => {
-      await add({ id: "alice", label: "alice", domain: "github.com", token: "t1", added_at: 0, priority: 0 })
-      await add({ id: "bob", label: "bob", domain: "github.com", token: "t2", added_at: 0, priority: 1 })
-      markSuccess("alice")
+    test("status: shows no rate limit for used healthy account", async () => {
+      await add({ id: "id-alice", label: "alice", domain: "github.com", token: "t1", added_at: 0, priority: 0 })
+      await add({ id: "id-bob", label: "bob", domain: "github.com", token: "t2", added_at: 0, priority: 1 })
+      markSuccess("id-alice")
       const result = await handleAccounts("status")
       const lines = result.split("\n")
-      const aliceStart = lines.findIndex(l => l.startsWith("alice"))
+      const aliceStart = lines.findIndex(l => l.includes("--- alice"))
       const aliceSection = lines.slice(aliceStart, aliceStart + 10).join("\n")
-      expect(aliceSection).toContain("Quota: available")
-      expect(result).toContain("Quota: unknown (no requests made yet)")
+      expect(aliceSection).toContain("Rate limited: no")
+      expect(result).toContain("Rate limited: unknown")
+      expect(result).not.toContain("Quota")
     })
 
-    test("shows rate limited quota", async () => {
-      await add({ id: "alice", label: "alice", domain: "github.com", token: "t1", added_at: 0, priority: 0 })
-      markRateLimited("alice")
+    test("status: shows rate limited for rate limited account", async () => {
+      await add({ id: "id-alice", label: "alice", domain: "github.com", token: "t1", added_at: 0, priority: 0 })
+      markRateLimited("id-alice")
       const result = await handleAccounts("status")
-      expect(result).toContain("Quota: rate limited until")
+      expect(result).toContain("Rate limited: yes")
       expect(result).toContain("alice")
+      expect(result).not.toContain("Quota")
     })
   })
 

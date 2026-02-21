@@ -75,22 +75,17 @@ export async function handleAccounts(args: string): Promise<string> {
     return accounts
       .map((a) => {
         const h = health.get(a.id)
-        const score = h?.score ?? 100
-        const limited = h && h.rate_limited_until > Date.now()
-        const failures = h?.consecutive_failures ?? 0
         const used = hasBeenUsed(a.id)
-        const quotaLine = !used
-          ? "  Quota: unknown (no requests made yet)"
+        const limited = h && h.rate_limited_until > Date.now()
+        const rateLimitLine = !used
+          ? "  Rate limited: unknown"
           : limited
-            ? `  Quota: rate limited until ${new Date(h!.rate_limited_until).toISOString()}`
-            : "  Quota: available"
+            ? `  Rate limited: yes (until ${new Date(h!.rate_limited_until).toISOString()})`
+            : "  Rate limited: no"
         return [
-          `${a.label} (${a.domain})`,
+          `--- ${a.label} (${a.id}) ---`,
           `  Priority: #${a.priority + 1}`,
-          `  Health: ${score}/100`,
-          `  Rate limited: ${limited ? `YES until ${new Date(h!.rate_limited_until).toISOString()}` : "no"}`,
-          `  Consecutive failures: ${failures}`,
-          quotaLine,
+          rateLimitLine,
         ].join("\n")
       })
       .join("\n\n")
